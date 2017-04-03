@@ -1,33 +1,40 @@
+'use strict';
 
 // https://github.com/socketio/socket.io 
 // https://github.com/davidpadbury/promises-by-example/tree/master/node_modules/socket.io
 
-let server = require('http').createServer();
-let io = require('socket.io')(server);
-// var Promise = require('promise');
+const config = require('./config'),
+      server = require('http').createServer(),
+      io = require('socket.io')(server),
+      // Promise = require('bluebird'),
+      DB = require('./db'),
+      assert = require('assert');
 
-// TODO: For now just keep all messages in an array (eventually DB)
-let messages = [];
+// Promise.promisifyAll(require("mongodb"));
 
-let storeMessage = (text, from) => {
-  let msg = {
-    text,
-    from,
-    time: Date.now()
-  };
-  messages.push(msg);
-  return msg;
+const db = new DB(config);
+db.connect();
+
+const storeMessage = (text, from) => {
+  return db.insertMessage(text, from, Date.now());
 }
 
-let sendMessages = (socket, since) => {
-  console.log('Sending messages', messages.length);
-  for (let i=0, len=messages.length; i < len; i++) {
-    let msg = messages[i];
-    if (msg.time > since) {
-      setImmediate(() => socket.send(msg))
-    }
-  }
+const sendMessages = (socket, since) => {
+  console.log('Sending messages');
+  db.getAllMessages()
+    .then(msgs => {
+      msgs.forEach(msg => {
+        if (msg.time > since) {
+          setImmediate(() => socket.send(msg))
+        }
+      });
+    })
+    .catch(error => {
+      console.log(error);
+    });
 }
+
+// Handle websocket connections
 
 io.on('connection', (socket) => {
 
@@ -35,7 +42,6 @@ io.on('connection', (socket) => {
 
   socket.on('set nickname', (name) => {
     console.log('Received set nickname');
-
     socket.set('nickname', name, () => {
       socket.emit('ready');
     })
@@ -43,8 +49,9 @@ io.on('connection', (socket) => {
 
   socket.on('message', (data) => {
     console.log('Received message', data);
-    let msg = storeMessage(data.text, data.from);
-    socket.broadcast.send(msg);
+    storeMessage(data.text, data.from)
+      .then(msg => socket.broadcast.send(msg))
+      .catch(err => socket.send({ error: 'store_failed'}))
   });
 
   socket.on('past messages', (since) => {

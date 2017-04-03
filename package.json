@@ -10,6 +10,8 @@
   "author": "Dean O'Connor",
   "license": "MIT",
   "dependencies": {
+    "bluebird": "^3.5.0",
+    "mongodb": "^2.2.25",
     "promise": "^7.1.1",
     "socket.io": "^1.7.2"
   }
